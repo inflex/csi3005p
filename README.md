@@ -8,11 +8,17 @@ You will require the SDL2 development lib in linux
 Your linux kernel needs to support the USBTMC protocol, most 
 reasonably modern kernels already have this.
 
-# Setup
+# Prerequisites 
+## Build tools
+	apt install git build-essential libsdl2-dev
 
-Build	 
+## Source
+	git clone https://github.com/inflex/csi3005p
 
-	(linux) make
+# Build
+
+	cd csi3005p
+	make
 	
 # Usage
 	
