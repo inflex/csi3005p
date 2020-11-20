@@ -1,5 +1,11 @@
 # csi3005p
-csi3005p - CircuitWorks CSI3005p PSU OSD for OBS
+csi3005p - Circuit Specialists CSI3005p PSU OSD for OBS
+
+# Introduction
+
+Designed to work for the CSI3005p from Circuit Specialists ( https://www.circuitspecialists.com/csi3005p.html ).
+
+This is a simplified display program for linux, ideal for including in OpenBroadcaster for YouTube streams.
 
 # Requirements
 
