@@ -9,10 +9,10 @@ Your linux kernel needs to support the USBTMC protocol, most
 reasonably modern kernels already have this.
 
 # Prerequisites 
-## Build tools
+### Build tools
 	apt install git build-essential libsdl2-dev
 
-## Source
+### Source
 	git clone https://github.com/inflex/csi3005p
 
 # Build
