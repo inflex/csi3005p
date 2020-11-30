@@ -912,6 +912,10 @@ int main ( int argc, char **argv ) {
 			}
 		}
 
+		if (paused == true) {
+			usleep(100000);
+		}
+
 	} // while(1)
 
 	if (g.comms_mode == CMODE_USB) {
