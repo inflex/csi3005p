@@ -19,6 +19,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
 #include <termios.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -38,6 +39,9 @@
 #ifndef BUILD_DATE
 #define BUILD_DATE " "
 #endif
+
+#define IOCTL_GPIOGET	0x8000
+#define IOCTL_GPIOSET	0x8001
 
 #define SSIZE 1024
 
@@ -60,8 +64,8 @@
 #define CMODE_SERIAL 2
 #define CMODE_NONE 0
 
-#define MEAS_VOLT "VOUT1?\n"
-#define MEAS_CURR "IOUT1?\n"
+#define MEAS_VOLT "VOUT1?n"
+#define MEAS_CURR "IOUT1?n"
 
 char SEPARATOR_DP[] = ".";
 
@@ -367,8 +371,9 @@ void open_port( struct glb *g ) {
 #ifdef __linux__
 	struct serial_params_s *s = &(g->serial_params);
 	char *p = g->serial_parameters_string;
-	char default_params[] = "9600:8:n";
+	char default_params[] = "9600:8n1";
 	int r; 
+	uint8_t gpioread;
 
 	if (!p) p = default_params;
 
@@ -378,53 +383,81 @@ void open_port( struct glb *g ) {
 		perror( s->device );
 	}
 
+	ioctl(s->fd, IOCTL_GPIOGET, &gpioread);
+	fprintf(stderr,"Latch values: %x\n", gpioread);
+
 	fcntl(s->fd,F_SETFL,0);
 	tcgetattr(s->fd,&(s->oldtp)); // save current serial port settings 
 	tcgetattr(s->fd,&(s->newtp)); // save current serial port settings in to what will be our new settings
 	cfmakeraw(&(s->newtp));
-	
-		s->newtp.c_cflag = CS8 |  CLOCAL | CREAD ; 
 
-      if (strncmp(p, "115200:", 7) == 0) s->newtp.c_cflag |= B115200; 
-		else if (strncmp(p, "57600:", 6) == 0) s->newtp.c_cflag |= B57600;
-		else if (strncmp(p, "38400:", 6) == 0) s->newtp.c_cflag |= B38400;
-		else if (strncmp(p, "19200:", 6) == 0) s->newtp.c_cflag |= B19200;
-		else if (strncmp(p, "9600:", 5) == 0) s->newtp.c_cflag |= B9600;
-		else if (strncmp(p, "4800:", 5) == 0) s->newtp.c_cflag |= B4800;
-      else if (strncmp(p, "2400:", 5) == 0) s->newtp.c_cflag |= B2400; //
-      else {
-         fprintf(stdout,"Invalid serial speed\r\n");
-         exit(1);
-      }
+	s->newtp.c_iflag = IGNPAR;
+	//s->newtp.c_iflag &= ~(IXON | IXOFF | IXANY );
+	s->newtp.c_cflag = CLOCAL | CREAD ; 
 
-		p = strchr(p,':');
-		if (p) {
-			p++;
-			// we don't do anything with the data bits because
-			// this PSU only accepts 8, so just jump to the next
-			// field
-			p = strchr(p,':');
-			if (!p) {
-				fprintf(stdout,"Invalid serial format string\n");
-				exit(1);
-			}
-      }
+	if (strncmp(p, "115200:", 7) == 0) s->newtp.c_cflag |= B115200; 
+	else if (strncmp(p, "57600:", 6) == 0) s->newtp.c_cflag |= B57600;
+	else if (strncmp(p, "38400:", 6) == 0) s->newtp.c_cflag |= B38400;
+	else if (strncmp(p, "19200:", 6) == 0) s->newtp.c_cflag |= B19200;
+	else if (strncmp(p, "9600:", 5) == 0) {
+		s->newtp.c_cflag |= B9600;
+		fprintf(stderr,"9600\n");
+	}
+	else if (strncmp(p, "4800:", 5) == 0) s->newtp.c_cflag |= B4800;
+	else if (strncmp(p, "2400:", 5) == 0) s->newtp.c_cflag |= B2400; //
+	else {
+		fprintf(stdout,"Invalid serial speed\r\n");
+		exit(1);
+	}
 
-      p++;
-      if (*p == 'o') s->newtp.c_cflag |= PARODD;
-      else if (*p == 'e') s->newtp.c_cflag |= PARENB;
-      else if (*p == 'n') s->newtp.c_cflag &= ~(PARODD|PARENB);
-      else {
-         fprintf(stdout,"Invalid serial parity type '%c'\r\n", *p);
-         exit(1);
-      }
+	s->newtp.c_cc[VMIN] = 0;
+	s->newtp.c_cc[VTIME] = 500;
+	p = strchr(p,':');
+	if (p) {
+		p++;
+		switch (*p) {
+			case '8':
+				s->newtp.c_cflag |= CS8;
+				fprintf(stderr,"8bit\n");
+				break;
+			case '7':
+				s->newtp.c_cflag |= CS7;
+				fprintf(stderr,"7bit\n");
+				break;
+		}
+	}
 
-	s->newtp.c_iflag &= ~(IXON | IXOFF | IXANY );
+	p++;
+	if (*p == 'o') {
+		s->newtp.c_cflag |= (PARODD|PARENB);
+		fprintf(stderr,"odd\n");
+	}
+	else if (*p == 'e') {
+		s->newtp.c_cflag |= PARENB;
+		fprintf(stderr,"even\n");
+	}
+	else if (*p == 'n') {
+		s->newtp.c_cflag &= ~(PARODD|PARENB);
+		fprintf(stderr,"none\n");
+	}
+	else {
+		fprintf(stdout,"Invalid serial parity type '%c'\r\n", *p);
+		exit(1);
+	}
+
+	p++;
+	if (*p == '2') {
+		s->newtp.c_cflag |= CSTOPB;
+		fprintf(stderr,"Two stop bits\n");
+	}
+
 
 	r = tcsetattr(s->fd, TCSANOW, &(s->newtp));
 	if (r) {
 		fprintf(stderr,"%s:%d: Error setting terminal (%s)\n", FL, strerror(errno));
 		exit(1);
+	} else {
+		fprintf(stderr,"%s:%d: Success setting new terminal configuration\n", FL);
 	}
 
 	fprintf(stdout,"Serial port opened, FD[%d]\n", s->fd);
@@ -476,10 +509,15 @@ int data_read( glb *g, char *b, ssize_t s ) {
 		do {
 			char temp_char;
 			bytes_read = read(g->serial_params.fd, &temp_char, 1);
-			if (bytes_read) {
+			if (bytes_read >0 ) {
 				b[bp] = temp_char;
 				if (b[bp] == '\n') break;
+				fprintf(stderr,"%c", temp_char);
 				bp++;
+			} else if (bytes_read == -1) {
+				fprintf(stderr,"Erorr reading - %s\n", strerror(errno));
+				return -1;
+			} else {
 			}
 		} while (bytes_read && bp < s);
 		b[bp] = '\0';
@@ -488,7 +526,7 @@ int data_read( glb *g, char *b, ssize_t s ) {
 }
 
 int data_write( glb *g, char *d, ssize_t s ) { 
-		ssize_t sz;
+	ssize_t sz;
 
 	if (g->comms_mode == CMODE_USB) {
 		/*
@@ -508,11 +546,12 @@ int data_write( glb *g, char *d, ssize_t s ) {
 		 *
 		 */
 		sz = write(g->serial_params.fd, d, s); 
-		if (sz < 0) {
+		fprintf(stderr,"%d bytes written [%s]\n", sz, d);
+		if (sz <= 0) {
 			g->error_flag = true;
 			fprintf(stdout,"Error sending serial data: %s\n", strerror(errno));
 			snprintf(d,s-1,"NODATA");
-		}
+		} 
 	}
 
 	return sz;
@@ -520,35 +559,35 @@ int data_write( glb *g, char *d, ssize_t s ) {
 
 #ifdef __WIN32
 void parse_serial_parameters( struct glb *g ) {
-      char *p = g->serial_parameters_string;
-      if (strncmp(p, "9600:", 5) == 0) dcbSerialParams.BaudRate = CBR_9600; // BaudRate = 9600
-      else if (strncmp(p, "4800:", 5) == 0) dcbSerialParams.BaudRate = CBR_4800; // BaudRate = 4800
-      else if (strncmp(p, "2400:", 5) == 0) dcbSerialParams.BaudRate = CBR_2400; // BaudRate = 2400
-      else if (strncmp(p, "1200:", 5) == 0) dcbSerialParams.BaudRate = CBR_1200; // BaudRate = 1200
-      else {
-         wprintf(L"Invalid serial speed\r\n");
-         CloseHandle(hComm);
-         exit(1);
-      }
+	char *p = g->serial_parameters_string;
+	if (strncmp(p, "9600:", 5) == 0) dcbSerialParams.BaudRate = CBR_9600; // BaudRate = 9600
+	else if (strncmp(p, "4800:", 5) == 0) dcbSerialParams.BaudRate = CBR_4800; // BaudRate = 4800
+	else if (strncmp(p, "2400:", 5) == 0) dcbSerialParams.BaudRate = CBR_2400; // BaudRate = 2400
+	else if (strncmp(p, "1200:", 5) == 0) dcbSerialParams.BaudRate = CBR_1200; // BaudRate = 1200
+	else {
+		wprintf(L"Invalid serial speed\r\n");
+		CloseHandle(hComm);
+		exit(1);
+	}
 
-      p = &(pg->serial_params[5]);
-      if (*p == '7') dcbSerialParams.ByteSize = 7;
-      else if (*p == '8') dcbSerialParams.ByteSize = 8;
-      else {
-         wprintf(L"Invalid serial byte size '%c'\r\n", *p);
-         CloseHandle(hComm);
-         exit(1);
-      }
+	p = &(pg->serial_params[5]);
+	if (*p == '7') dcbSerialParams.ByteSize = 7;
+	else if (*p == '8') dcbSerialParams.ByteSize = 8;
+	else {
+		wprintf(L"Invalid serial byte size '%c'\r\n", *p);
+		CloseHandle(hComm);
+		exit(1);
+	}
 
-      p++;
-      if (*p == 'o') dcbSerialParams.Parity = ODDPARITY;
-      else if (*p == 'e') dcbSerialParams.Parity = EVENPARITY;
-      else if (*p == 'n') dcbSerialParams.Parity = NOPARITY;
-      else {
-         wprintf(L"Invalid serial parity type '%c'\r\n", *p);
-         CloseHandle(hComm);
-         exit(1);
-      }
+	p++;
+	if (*p == 'o') dcbSerialParams.Parity = ODDPARITY;
+	else if (*p == 'e') dcbSerialParams.Parity = EVENPARITY;
+	else if (*p == 'n') dcbSerialParams.Parity = NOPARITY;
+	else {
+		wprintf(L"Invalid serial parity type '%c'\r\n", *p);
+		CloseHandle(hComm);
+		exit(1);
+	}
 }
 #endif
 
@@ -647,6 +686,24 @@ int main ( int argc, char **argv ) {
 	}
 
 	/*
+		while (1) {
+		ssize_t sz = 0;
+		char bv[200];
+		fprintf(stderr,"Writing IDN request\n");
+		sz = data_write( &g, "*IDN?\n", 6 );
+		usleep(20000);
+		fprintf(stderr,"Reading ID result\n");
+		sz = data_read( &g, bv, sizeof(bv) );
+		fprintf(stderr,"%s\n", bv);
+		sleep(1);
+		if (sz == -1) {
+		exit(1);
+		}
+
+		}
+		*/
+
+	/*
 	 * Setup SDL2 and fonts
 	 *
 	 */
@@ -668,6 +725,9 @@ int main ( int argc, char **argv ) {
 	if (g.wx_forced) g.window_width = g.wx_forced;
 	if (g.wy_forced) g.window_height = g.wy_forced;
 
+//	SDL_Window *window;
+//	SDL_Renderer *renderer;
+
 	SDL_Window *window = SDL_CreateWindow("CSI3005P", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, g.window_width, g.window_height, 0);
 	SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, 0);
 	if (!font) {
@@ -687,6 +747,7 @@ int main ( int argc, char **argv ) {
 	 * and hope that the almighty PID 1 will reap us
 	 *
 	 */
+	fprintf(stderr, "Starting loop\n");
 	while (!quit) {
 		char line1[1024];
 		char line2[1024];
@@ -718,25 +779,34 @@ int main ( int argc, char **argv ) {
 
 
 		/*
-		if (g.error_flag) {
+			if (g.error_flag) {
 			f = open( g.device, O_RDWR );
 			if (f == -1) {
-				fprintf(stdout, "Error opening device [%s] : %s\n", g.device, strerror(errno));
-				sleep(1);
+			fprintf(stdout, "Error opening device [%s] : %s\n", g.device, strerror(errno));
+			sleep(1);
 			} else {
-				error_flag = false;
+			error_flag = false;
 			}
 
-		}
-		*/
+			}
+			*/
 
+		fprintf(stderr,"Writing volt request\n");
 		sz = data_write( &g, g.meas_volt, strlen(g.meas_volt)  );
-		usleep(20000);
+		usleep(100000);
+		fprintf(stderr,"Reading volt result\n");
 		sz = data_read( &g, buf_volt, sizeof(buf_volt) );
+		if (sz == -1) {
+			exit(1);
+		}
 
+		fprintf(stderr,"Writing current request\n");
 		sz = data_write( &g, g.meas_curr, strlen(g.meas_curr));
-		usleep(20000);
+		usleep(100000);
 		sz = data_read( &g, buf_curr, sizeof(buf_curr));
+		if (sz == -1) {
+			exit (1);
+		}
 
 		/*
 		 *
@@ -751,19 +821,20 @@ int main ( int argc, char **argv ) {
 		if (g.debug) fprintf(stdout,"%s\n%s\n", line1, line2);
 
 
+		if (0)
 		{
 			int texW = 0;
 			int texH = 0;
 			int texW2 = 0;
 			int texH2 = 0;
 			SDL_RenderClear(renderer);
-			surface = TTF_RenderUTF8_Solid(font, line1, g.font_color_volts);
+			//			surface = TTF_RenderUTF8_Solid(font, line1, g.font_color_volts);
 			texture = SDL_CreateTextureFromSurface(renderer, surface);
 			SDL_QueryTexture(texture, NULL, NULL, &texW, &texH);
 			SDL_Rect dstrect = { 0, 0, texW, texH };
 			SDL_RenderCopy(renderer, texture, NULL, &dstrect);
 
-			surface_2 = TTF_RenderUTF8_Solid(font, line2, g.font_color_amps);
+			//			surface_2 = TTF_RenderUTF8_Solid(font, line2, g.font_color_amps);
 			texture_2 = SDL_CreateTextureFromSurface(renderer, surface_2);
 			SDL_QueryTexture(texture_2, NULL, NULL, &texW2, &texH2);
 			dstrect = { 0, texH -(texH /5), texW2, texH2 };
@@ -813,9 +884,9 @@ int main ( int argc, char **argv ) {
 		close(g.usb_fhandle);
 	}
 
-	TTF_CloseFont(font);
 	SDL_DestroyRenderer(renderer);
 	SDL_DestroyWindow(window);
+	TTF_CloseFont(font);
 	TTF_Quit();
 	SDL_Quit();
 
