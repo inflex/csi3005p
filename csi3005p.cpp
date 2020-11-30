@@ -636,6 +636,7 @@ int main ( int argc, char **argv ) {
 	char temp_char;        // Temporary character
 	char tfn[4096];
 	bool quit = false;
+	bool paused = false;
 
 	glbs = &g;
 
@@ -793,6 +794,7 @@ int main ( int argc, char **argv ) {
 			{
 				case SDL_KEYDOWN:
 					if (event.key.keysym.sym == SDLK_q) quit = true;
+					if (event.key.keysym.sym == SDLK_p) paused ^= 1;
 					break;
 				case SDL_QUIT:
 					quit = true;
@@ -816,21 +818,25 @@ int main ( int argc, char **argv ) {
 			}
 			*/
 
-		if (g.debug) fprintf(stderr,"Writing volt request\n");
-		sz = data_write( &g, g.meas_volt, strlen(g.meas_volt)  );
-		usleep(100000);
-		if (g.debug) fprintf(stderr,"Reading volt result\n");
-		sz = data_read( &g, buf_volt, sizeof(buf_volt) );
-		if (sz == -1) {
-			exit(1);
-		}
 
-		if (g.debug) fprintf(stderr,"Writing current request\n");
-		sz = data_write( &g, g.meas_curr, strlen(g.meas_curr));
-		usleep(100000);
-		sz = data_read( &g, buf_curr, sizeof(buf_curr));
-		if (sz == -1) {
-			exit (1);
+		if ( !paused ) {
+
+			if (g.debug) fprintf(stderr,"Writing volt request\n");
+			sz = data_write( &g, g.meas_volt, strlen(g.meas_volt)  );
+			usleep(100000);
+			if (g.debug) fprintf(stderr,"Reading volt result\n");
+			sz = data_read( &g, buf_volt, sizeof(buf_volt) );
+			if (sz == -1) {
+				exit(1);
+			}
+
+			if (g.debug) fprintf(stderr,"Writing current request\n");
+			sz = data_write( &g, g.meas_curr, strlen(g.meas_curr));
+			usleep(100000);
+			sz = data_read( &g, buf_curr, sizeof(buf_curr));
+			if (sz == -1) {
+				exit (1);
+			}
 		}
 
 		/*
@@ -841,9 +847,14 @@ int main ( int argc, char **argv ) {
 
 
 		//snprintf(line1, sizeof(line1)-1, "%s%s", buf_volt, error_flag?"":"V");
-		snprintf(line1, sizeof(line1), "%7s%s", buf_volt, g.error_flag?"":"V");
-		snprintf(line2, sizeof(line2), "%7s%s", buf_curr, g.error_flag?"":"A");
-		if (g.debug) fprintf(stdout,"%s\n%s\n", line1, line2);
+		if (paused) {
+			snprintf(line1,sizeof(line1),"Paused");
+			snprintf(line2,sizeof(line2),"press 'p'");
+		} else {
+			snprintf(line1, sizeof(line1), "%7s%s", buf_volt, g.error_flag?"":"V");
+			snprintf(line2, sizeof(line2), "%7s%s", buf_curr, g.error_flag?"":"A");
+			if (g.debug) fprintf(stdout,"%s\n%s\n", line1, line2);
+		}
 
 
 		if (1)
