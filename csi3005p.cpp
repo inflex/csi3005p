@@ -24,6 +24,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include "robotomono.h"
 
 #define FL __FILE__,__LINE__
 
@@ -707,11 +708,20 @@ int main ( int argc, char **argv ) {
 	 * Setup SDL2 and fonts
 	 *
 	 */
+//	setenv("LIBGL_ALWAYS_INDIRECT","1",1);
+//	setenv("SDL_VIDEO_X11_VISUALID", "", 1);
 
 	SDL_Init(SDL_INIT_VIDEO);
+	SDL_RWops *s = SDL_RWFromMem( (void *)RobotoMono_Regular_ttf, sizeof(RobotoMono_Regular_ttf));
 	TTF_Init();
-	TTF_Font *font = TTF_OpenFont("RobotoMono-Regular.ttf", g.font_size);
-	TTF_Font *font_small = TTF_OpenFont("RobotoMono-Regular.ttf", g.font_size/4);
+	TTF_Font *font = TTF_OpenFontRW( s, 0, g.font_size ); 
+	if (!font) {
+		fprintf(stderr,"Error trying to open font (RobotoMono-Regular.ttf)  :(\n");
+		exit(1);
+	}
+
+//	TTF_Font *font = TTF_OpenFont("RobotoMono-Regular.ttf", g.font_size);
+//	TTF_Font *font_small = TTF_OpenFont("RobotoMono-Regular.ttf", g.font_size/4);
 
 	/*
 	 * Get the required window size.
@@ -728,7 +738,8 @@ int main ( int argc, char **argv ) {
 //	SDL_Window *window;
 //	SDL_Renderer *renderer;
 
-	SDL_Window *window = SDL_CreateWindow("CSI3005P", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, g.window_width, g.window_height, 0);
+	//SDL_Window *window = SDL_CreateWindow("CSI3005P", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, g.window_width, g.window_height, SDL_WINDOW_OPENGL|SDL_WINDOW_SHOWN);
+	SDL_Window *window = SDL_CreateWindow("CSI3005P", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, g.window_width, g.window_height, SDL_WINDOW_SHOWN);
 	SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, 0);
 	if (!font) {
 		fprintf(stderr,"Error trying to open font :( \r\n");
@@ -828,13 +839,13 @@ int main ( int argc, char **argv ) {
 			int texW2 = 0;
 			int texH2 = 0;
 			SDL_RenderClear(renderer);
-			//			surface = TTF_RenderUTF8_Solid(font, line1, g.font_color_volts);
+			surface = TTF_RenderUTF8_Shaded(font, line1, g.font_color_volts, g.background_color);
 			texture = SDL_CreateTextureFromSurface(renderer, surface);
 			SDL_QueryTexture(texture, NULL, NULL, &texW, &texH);
 			SDL_Rect dstrect = { 0, 0, texW, texH };
 			SDL_RenderCopy(renderer, texture, NULL, &dstrect);
 
-			//			surface_2 = TTF_RenderUTF8_Solid(font, line2, g.font_color_amps);
+			surface_2 = TTF_RenderUTF8_Shaded(font, line2, g.font_color_amps, g.background_color);
 			texture_2 = SDL_CreateTextureFromSurface(renderer, surface_2);
 			SDL_QueryTexture(texture_2, NULL, NULL, &texW2, &texH2);
 			dstrect = { 0, texH -(texH /5), texW2, texH2 };
