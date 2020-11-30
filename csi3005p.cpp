@@ -80,6 +80,7 @@ struct serial_params_s {
 
 struct glb {
 	uint8_t debug;
+	uint8_t dummy; // no real serial mode
 	uint8_t quiet;
 	uint16_t flags;
 	uint16_t error_flag;
@@ -168,6 +169,7 @@ Changes:
 \------------------------------------------------------------------*/
 int init(struct glb *g) {
 	g->debug = 0;
+	g->dummy = 0;
 	g->quiet = 0;
 	g->flags = 0;
 	g->error_flag = 0;
@@ -200,6 +202,7 @@ void show_help(void) {
 			"\r\n"
 			"\t-h: This help\r\n"
 			"\t-d: debug enabled\r\n"
+			"\t-D: dummy serial mode (testing)\r\n"
 			"\t-q: quiet output\r\n"
 			"\t-v: show version\r\n"
 			"\t-z <font size in pt>\r\n"
@@ -295,6 +298,8 @@ int parse_parameters(struct glb *g, int argc, char **argv ) {
 
 				case 'd': g->debug = 1; break;
 
+				case 'D': g->dummy = 1; break;
+
 				case 'q': g->quiet = 1; break;
 
 				case 'v':
@@ -369,6 +374,8 @@ int parse_parameters(struct glb *g, int argc, char **argv ) {
  *
  */
 void open_port( struct glb *g ) {
+	if (g->dummy) return;
+
 #ifdef __linux__
 	struct serial_params_s *s = &(g->serial_params);
 	char *p = g->serial_parameters_string;
@@ -461,7 +468,7 @@ void open_port( struct glb *g ) {
 		fprintf(stderr,"%s:%d: Success setting new terminal configuration\n", FL);
 	}
 
-	fprintf(stdout,"Serial port opened, FD[%d]\n", s->fd);
+	fprintf(stderr,"Serial port opened, FD[%d]\n", s->fd);
 #endif
 }
 
@@ -473,6 +480,12 @@ uint8_t a2h( uint8_t a ) {
 }
 
 int data_read( glb *g, char *b, ssize_t s ) {
+
+	if (g->dummy) {
+		snprintf(b, s, "1.234");
+		return 5;
+	}
+
 	ssize_t sz;
 	if (g->comms_mode == CMODE_USB) {
 		/*
@@ -513,7 +526,6 @@ int data_read( glb *g, char *b, ssize_t s ) {
 			if (bytes_read >0 ) {
 				b[bp] = temp_char;
 				if (b[bp] == '\n') break;
-				fprintf(stderr,"%c", temp_char);
 				bp++;
 			} else if (bytes_read == -1) {
 				fprintf(stderr,"Erorr reading - %s\n", strerror(errno));
@@ -528,6 +540,8 @@ int data_read( glb *g, char *b, ssize_t s ) {
 
 int data_write( glb *g, char *d, ssize_t s ) { 
 	ssize_t sz;
+
+	if (g->dummy) return s;
 
 	if (g->comms_mode == CMODE_USB) {
 		/*
@@ -547,7 +561,7 @@ int data_write( glb *g, char *d, ssize_t s ) {
 		 *
 		 */
 		sz = write(g->serial_params.fd, d, s); 
-		fprintf(stderr,"%d bytes written [%s]\n", sz, d);
+		if (g->debug) fprintf(stderr,"%d bytes written [%s]\n", sz, d);
 		if (sz <= 0) {
 			g->error_flag = true;
 			fprintf(stdout,"Error sending serial data: %s\n", strerror(errno));
@@ -739,7 +753,7 @@ int main ( int argc, char **argv ) {
 //	SDL_Renderer *renderer;
 
 	//SDL_Window *window = SDL_CreateWindow("CSI3005P", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, g.window_width, g.window_height, SDL_WINDOW_OPENGL|SDL_WINDOW_SHOWN);
-	SDL_Window *window = SDL_CreateWindow("CSI3005P", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, g.window_width, g.window_height, SDL_WINDOW_SHOWN);
+	SDL_Window *window = SDL_CreateWindow("CSI3005P", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, g.window_width, g.window_height, 0);
 	SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, 0);
 	if (!font) {
 		fprintf(stderr,"Error trying to open font :( \r\n");
@@ -802,16 +816,16 @@ int main ( int argc, char **argv ) {
 			}
 			*/
 
-		fprintf(stderr,"Writing volt request\n");
+		if (g.debug) fprintf(stderr,"Writing volt request\n");
 		sz = data_write( &g, g.meas_volt, strlen(g.meas_volt)  );
 		usleep(100000);
-		fprintf(stderr,"Reading volt result\n");
+		if (g.debug) fprintf(stderr,"Reading volt result\n");
 		sz = data_read( &g, buf_volt, sizeof(buf_volt) );
 		if (sz == -1) {
 			exit(1);
 		}
 
-		fprintf(stderr,"Writing current request\n");
+		if (g.debug) fprintf(stderr,"Writing current request\n");
 		sz = data_write( &g, g.meas_curr, strlen(g.meas_curr));
 		usleep(100000);
 		sz = data_read( &g, buf_curr, sizeof(buf_curr));
@@ -832,7 +846,7 @@ int main ( int argc, char **argv ) {
 		if (g.debug) fprintf(stdout,"%s\n%s\n", line1, line2);
 
 
-		if (0)
+		if (1)
 		{
 			int texW = 0;
 			int texH = 0;
@@ -855,10 +869,8 @@ int main ( int argc, char **argv ) {
 
 			SDL_DestroyTexture(texture);
 			SDL_FreeSurface(surface);
-			if (1) {
-				SDL_DestroyTexture(texture_2);
-				SDL_FreeSurface(surface_2);
-			}
+			SDL_DestroyTexture(texture_2);
+			SDL_FreeSurface(surface_2);
 
 			if (g.error_flag) {
 				sleep(1);
